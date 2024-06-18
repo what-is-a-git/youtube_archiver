@@ -102,7 +102,15 @@ async fn download_video(params: VideoParameters<'_>) -> Result<(), String> {
                 .send()
                 .await
                 .unwrap();
-            let video_contents = get_response.bytes().await.unwrap();
+            let video_contents_result = get_response.bytes().await;
+            if video_contents_result.is_err() {
+                let error = video_contents_result.err().unwrap();
+                return Err(format!(
+                    "Got an error decoding the cobalt api's video! Error: {error}"
+                ));
+            }
+            let video_contents = video_contents_result.unwrap();
+
             let mut output_file = File::create(params.filename.clone()).unwrap();
             let write_result = output_file.write_all(&video_contents);
 
