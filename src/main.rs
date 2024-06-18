@@ -39,6 +39,12 @@ struct Arguments {
 
     #[arg(short, long)]
     dir: String,
+
+    #[arg(short, long, default_value_t = true)]
+    video: bool,
+
+    #[arg(short, long, default_value_t = true)]
+    metadata: bool,
 }
 
 fn main() {
@@ -53,16 +59,20 @@ fn main() {
         .build()
         .unwrap()
         .block_on(async {
-            request_metadata(MetadataParameters {
-                url: &url,
-                dir: &directory,
-            }).await;
+            if args.metadata {
+                request_metadata(MetadataParameters {
+                    url: &url,
+                    dir: &directory,
+                }).await;
+            }
 
-            request_video(VideoParameters {
-                url: &url,
-                video_codec: String::from("h264"),
-                filename: format!("{}/source_h264.mp4", &directory),
-            }).await;
+            if args.video {
+                request_video(VideoParameters {
+                    url: &url,
+                    video_codec: String::from("h264"),
+                    filename: format!("{}/source_h264.mp4", &directory),
+                }).await;
+            }
         });
 }
 
@@ -93,26 +103,40 @@ async fn request_metadata(params: MetadataParameters<'_>) {
     }
 
     let thumbnails = &meta.items[0].snippet.thumbnails;
-    request_thumbnail(ThumbnailParameters {
-        url: &thumbnails.default.url,
-        filename: format!("{}/thumb_default.jpg", params.dir),
-    }).await;
-    request_thumbnail(ThumbnailParameters {
-        url: &thumbnails.medium.url,
-        filename: format!("{}/thumb_medium.jpg", params.dir),
-    }).await;
-    request_thumbnail(ThumbnailParameters {
-        url: &thumbnails.high.url,
-        filename: format!("{}/thumb_high.jpg", params.dir),
-    }).await;
-    request_thumbnail(ThumbnailParameters {
-        url: &thumbnails.standard.url,
-        filename: format!("{}/thumb_standard.jpg", params.dir),
-    }).await;
-    request_thumbnail(ThumbnailParameters {
-        url: &thumbnails.maxres.url,
-        filename: format!("{}/thumb_maxres.jpg", params.dir),
-    }).await;
+    if thumbnails.default.is_some() {
+        request_thumbnail(ThumbnailParameters {
+            url: &thumbnails.default.as_ref().unwrap().url,
+            filename: format!("{}/thumb_default.jpg", params.dir),
+        }).await;
+    }
+
+    if thumbnails.medium.is_some() {
+        request_thumbnail(ThumbnailParameters {
+            url: &thumbnails.medium.as_ref().unwrap().url,
+            filename: format!("{}/thumb_medium.jpg", params.dir),
+        }).await;
+    }
+    
+    if thumbnails.high.is_some() {
+        request_thumbnail(ThumbnailParameters {
+            url: &thumbnails.high.as_ref().unwrap().url,
+            filename: format!("{}/thumb_high.jpg", params.dir),
+        }).await;
+    }
+
+    if thumbnails.standard.is_some() {
+        request_thumbnail(ThumbnailParameters {
+            url: &thumbnails.standard.as_ref().unwrap().url,
+            filename: format!("{}/thumb_standard.jpg", params.dir),
+        }).await;
+    }
+
+    if thumbnails.maxres.is_some() {
+        request_thumbnail(ThumbnailParameters {
+            url: &thumbnails.maxres.as_ref().unwrap().url,
+            filename: format!("{}/thumb_maxres.jpg", params.dir),
+        }).await;
+    }
 }
 
 #[derive(Serialize)]
@@ -162,11 +186,11 @@ struct ThumbnailResponse {
 #[allow(non_snake_case)] // needed for youtube api
 #[derive(Debug, Deserialize)]
 struct ThumbnailsResponse {
-    default: ThumbnailResponse,
-    medium: ThumbnailResponse,
-    high: ThumbnailResponse,
-    standard: ThumbnailResponse,
-    maxres: ThumbnailResponse,
+    default: Option<ThumbnailResponse>,
+    medium: Option<ThumbnailResponse>,
+    high: Option<ThumbnailResponse>,
+    standard: Option<ThumbnailResponse>,
+    maxres: Option<ThumbnailResponse>,
 }
 
 #[allow(non_snake_case)] // needed for youtube api
@@ -206,10 +230,12 @@ async fn download_metadata(url: String) -> Result<YouTubeResponse, String> {
         return Err(format!("Error while getting metadata! Error: {error}"));
     }
 
-    let response = result.unwrap().json::<YouTubeResponse>().await;
+    let contents = result.unwrap().text().await.unwrap();
+    let bytes = contents.as_bytes();
+    let response = serde_json::from_slice(&bytes);
     if response.is_err() {
         let error = response.err().unwrap();
-        return Err(format!("Error while parsing metadata! Error: {error}"));
+        return Err(format!("Error while parsing metadata! Error: {error}, Original Data: {contents}"));
     }
 
     Ok(response.unwrap())
