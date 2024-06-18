@@ -27,7 +27,7 @@ about a youtube video and the video itself
 - streams_and_premieres: bool, default: true
     * Specifies whether ot not to archive streams and premieres when archiving a whole channel.
     This may at times not be wanted as streams can get very long and thus take a lot of memory and time to download.
-- api: String, default: https://yt.lemnoslife.com
+- api: String, default: `https://yt.lemnoslife.com`, ex: `http://localhost:8080`
     * Specifies the address of api to use for archiving.
     You must use an instance of the [YouTube Operational API](https://github.com/Benjamin-Loison/YouTube-operational-API) for this,
     although support for the official api and api keys maybe be added in the future if needed.
