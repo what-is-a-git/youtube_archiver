@@ -1,6 +1,6 @@
 // crates //
-use std::fs::create_dir_all;
 use clap::Parser;
+use std::fs::create_dir_all;
 
 // modules //
 mod log;
@@ -63,7 +63,9 @@ async fn get_channel(args: &Arguments) {
     let videos = request_channel(&args.url, args.api.clone(), args.streams_and_premieres).await;
     if videos.is_err() {
         let error = videos.err().unwrap();
-        failure(format!("Encountered an error while getting channel videos! Error: {error}"));
+        failure(format!(
+            "Encountered an error while getting channel videos! Error: {error}"
+        ));
         return;
     }
 
@@ -101,10 +103,14 @@ async fn get_videos(args: &Arguments, videos: Vec<String>) {
 
 async fn get_video(args: &Arguments) {
     if args.metadata {
-        request_metadata(MetadataParameters {
-            url: &args.url,
-            dir: &args.dir,
-        }, args.api.clone()).await;
+        request_metadata(
+            MetadataParameters {
+                url: &args.url,
+                dir: &args.dir,
+            },
+            args.api.clone(),
+        )
+        .await;
     }
 
     if args.video {
@@ -112,6 +118,7 @@ async fn get_video(args: &Arguments) {
             url: &args.url,
             video_codec: String::from("h264"),
             filename: format!("{}/source_h264.mp4", &args.dir),
-        }).await;
+        })
+        .await;
     }
 }
