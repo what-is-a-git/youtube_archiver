@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### Added
+
+- YouTube video URLs with ?t=, are now supported, as well as any url with a ?
+  in the youtu.be format.
+
 ### Changed
 
 - Force printing log type as black text to improve readability in some cases.
