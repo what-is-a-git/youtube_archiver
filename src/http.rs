@@ -5,8 +5,8 @@ use reqwest::{Client, Error, Response};
 use serde::Serialize;
 
 pub(crate) struct GetRequest {
-    url: String,
-    accept: Option<String>,
+    pub url: String,
+    pub accept: Option<String>,
 }
 
 pub(crate) async fn get_request(request: GetRequest, client: &Client) -> Result<Response, Error> {
@@ -19,9 +19,9 @@ pub(crate) async fn get_request(request: GetRequest, client: &Client) -> Result<
 }
 
 pub(crate) struct PostJSONRequest<T> {
-    url: String,
-    accept: Option<String>,
-    json: T,
+    pub url: String,
+    pub accept: Option<String>,
+    pub json: T,
 }
 
 pub(crate) async fn post_json_request<T: Serialize>(

@@ -98,7 +98,6 @@ struct ArchivedMetadata {
 
 fn write_metadata(input: &ItemResponse, dir: &String) -> Result<(), String> {
     let mut tags: Vec<String> = Vec::new();
-
     if input.snippet.tags.is_some() {
         tags = input.snippet.tags.as_ref().unwrap().clone();
     }
@@ -115,13 +114,22 @@ fn write_metadata(input: &ItemResponse, dir: &String) -> Result<(), String> {
     create_dir_all(&dir).unwrap();
     let mut output_file = File::create(&output_filename).unwrap();
     let output_contents = serde_json::to_string_pretty(&output_data).unwrap();
-    let write_result = output_file.write_all(output_contents.as_bytes());
 
+    let write_result = output_file.write_all(output_contents.as_bytes());
     if !write_result.is_ok() {
         return Err(format!(
-            "Couldn't write to file {}... Error: {:?}",
+            "Couldn't write to file {}. Error: {:?}",
             &output_filename,
             write_result.err()
+        ));
+    }
+
+    let flush_result = output_file.flush();
+    if !flush_result.is_ok() {
+        return Err(format!(
+            "Couldn't flush file {}. Error: {:?}",
+            &output_filename,
+            flush_result.err().unwrap()
         ));
     }
 
@@ -174,12 +182,14 @@ struct YouTubeResponse {
 
 async fn download_metadata(url: String, client: &Client) -> Result<YouTubeResponse, String> {
     request(format!("Requesting metadata at this url: {}", &url));
-    let result = client
-        .get(url)
-        .header("Accept", "application/json")
-        .header("Content-Type", "application/json")
-        .send()
-        .await;
+    let result = get_request(
+        GetRequest {
+            url: url,
+            accept: Some(String::from("application/json")),
+        },
+        client,
+    )
+    .await;
 
     if result.is_err() {
         let error = result.err().unwrap();
@@ -220,8 +230,14 @@ async fn request_thumbnail(params: ThumbnailParameters<'_>) {
 }
 
 async fn download_thumbnail(params: ThumbnailParameters<'_>) -> Result<(), String> {
-    let result = params.client.get(params.url).send().await;
-
+    let result = get_request(
+        GetRequest {
+            url: params.url.to_owned(),
+            accept: None,
+        },
+        params.client,
+    )
+    .await;
     if result.is_err() {
         return Err(format!(
             "Failed to request {}! Error: {:?}",
@@ -233,13 +249,22 @@ async fn download_thumbnail(params: ThumbnailParameters<'_>) -> Result<(), Strin
     let response = result.unwrap();
     let contents = response.bytes().await.unwrap();
     let mut output_file = File::create(params.filename.clone()).unwrap();
-    let write_result = output_file.write_all(&contents);
 
+    let write_result = output_file.write_all(&contents);
     if !write_result.is_ok() {
         return Err(format!(
-            "Couldn't write to file {}... Error: {:?}",
+            "Couldn't write to file {}. Error: {:?}",
             params.filename,
             write_result.err()
+        ));
+    }
+
+    let flush_result = output_file.flush();
+    if !flush_result.is_ok() {
+        return Err(format!(
+            "Couldn't flush file {}. Error: {:?}",
+            params.filename,
+            flush_result.err().unwrap()
         ));
     }
 
@@ -304,11 +329,20 @@ pub async fn request_channel(params: ChannelRequest<'_>) -> Result<Vec<String>, 
         "Requesting channel ID from handle {}!",
         &channel_handle
     ));
+
     let id_url = format!(
         "{}/noKey/channels?part=id&forHandle=@{}",
         params.url, &channel_handle
     );
-    let result = client.get(id_url).send().await;
+
+    let result = get_request(
+        GetRequest {
+            url: id_url,
+            accept: None,
+        },
+        &client,
+    )
+    .await;
     if result.is_err() {
         let error = result.err().unwrap();
         return Err(format!("There was an error requesting the channel ID from the channel handle {}! Error: {error}", &channel_handle));
@@ -411,7 +445,14 @@ async fn request_videos(params: VideosRequestParameters) -> Result<Vec<String>, 
         initial_url += format!("&pageToken={}", params.next_page.unwrap()).as_str();
     }
 
-    let result = params.client.get(initial_url).send().await;
+    let result = get_request(
+        GetRequest {
+            url: initial_url,
+            accept: Some(String::from("application/json")),
+        },
+        &params.client,
+    )
+    .await;
     if result.is_err() {
         let error = result.err().unwrap();
         return Err(format!("There was an error requesting the channel videos from the channel id {}! Error: {error}", params.channel_id));
@@ -428,8 +469,8 @@ async fn request_videos(params: VideosRequestParameters) -> Result<Vec<String>, 
     success(String::from(
         "Got a search result from previous request! Parsing videos now.",
     ));
-    let search_list = search_parse_result.unwrap();
 
+    let search_list = search_parse_result.unwrap();
     for search_result in search_list.items {
         if search_result.id.kind != "youtube#video" {
             // shouldn't be possible but just in case ig
@@ -442,7 +483,7 @@ async fn request_videos(params: VideosRequestParameters) -> Result<Vec<String>, 
             continue;
         }
 
-        let is_stream_result = is_video_a_stream(id, &params.api).await;
+        let is_stream_result = is_video_a_stream(id, &params.api, &params.client).await;
         if is_stream_result.is_err() {
             let error = is_stream_result.err().unwrap();
             failure(format!(
@@ -490,14 +531,15 @@ struct LiveStreamingDetails {
     // actualEndTime: String,
 }
 
-async fn is_video_a_stream(id: &String, api: &String) -> Result<bool, String> {
-    let client = reqwest::Client::new();
-    let result = client
-        .get(format!(
-            "{api}/noKey/videos?part=liveStreamingDetails&id={id}"
-        ))
-        .send()
-        .await;
+async fn is_video_a_stream(id: &String, api: &String, client: &Client) -> Result<bool, String> {
+    let result = get_request(
+        GetRequest {
+            url: format!("{api}/noKey/videos?part=liveStreamingDetails&id={id}"),
+            accept: Some(String::from("application/json")),
+        },
+        client,
+    )
+    .await;
 
     if result.is_err() {
         let error = result.err().unwrap();

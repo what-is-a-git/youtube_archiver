@@ -1,5 +1,5 @@
 // crates //
-use clap::Parser;
+use clap::{ArgAction, Parser};
 use std::fs::create_dir_all;
 
 // modules //
@@ -20,13 +20,13 @@ struct Arguments {
     #[arg(short, long)]
     dir: String,
 
-    #[arg(short, long, default_value_t = true)]
+    #[arg(short, long, default_value_t = true, action = ArgAction::Set)]
     video: bool,
 
-    #[arg(short, long, default_value_t = true)]
+    #[arg(short, long, default_value_t = true, action = ArgAction::Set)]
     metadata: bool,
 
-    #[arg(short, long, default_value_t = true)]
+    #[arg(short, long, default_value_t = true, action = ArgAction::Set)]
     streams_and_premieres: bool,
 
     #[arg(short, long, default_value_t = String::from("https://yt.lemnoslife.com"))]

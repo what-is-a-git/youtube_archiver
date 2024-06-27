@@ -1,4 +1,6 @@
+use crate::http::*;
 use crate::log::*;
+use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use std::{fs::File, io::Write};
 
@@ -48,30 +50,32 @@ pub async fn request_video(params: VideoParameters<'_>) {
 }
 
 async fn download_video(params: VideoParameters<'_>) -> Result<(), String> {
-    let client = reqwest::Client::new();
-    let initial_result = client
-        .post("https://api.cobalt.tools/api/json")
-        .header("Accept", "application/json")
-        .header("Content-Type", "application/json")
-        .json(&RequestBody {
-            url: params.url.as_str(),
-            vCodec: params.video_codec.as_str(),
-            vQuality: "max",
-            aFormat: "best",
-            filenamePattern: "classic",
-            isAudioOnly: false,
-            isTTFullAudio: false,
-            isAudioMuted: false,
-            dubLang: false,
-            disableMetadata: false,
-            twitterGif: false,
-            tiktokH265: false,
-        })
-        .send()
-        .await;
+    let client = Client::new();
+    let initial_result = post_json_request::<RequestBody>(
+        PostJSONRequest {
+            url: String::from("https://api.cobalt.tools/api/json"),
+            accept: Some(String::from("application/json")),
+            json: RequestBody {
+                url: params.url.as_str(),
+                vCodec: params.video_codec.as_str(),
+                vQuality: "max",
+                aFormat: "best",
+                filenamePattern: "classic",
+                isAudioOnly: false,
+                isTTFullAudio: false,
+                isAudioMuted: false,
+                dubLang: false,
+                disableMetadata: false,
+                twitterGif: false,
+                tiktokH265: false,
+            },
+        },
+        &client,
+    )
+    .await;
 
     if !initial_result.is_ok() {
-        return Err(String::from("Got an error while posting to api.cobalt.tools/api/json! Maybe check your internet connection?"));
+        return Err(String::from("Got an error while posting to https://api.cobalt.tools/api/json! Maybe check your internet connection?"));
     }
 
     success(String::from("Got response from the cobalt api!"));
@@ -94,14 +98,16 @@ async fn download_video(params: VideoParameters<'_>) -> Result<(), String> {
         }
         "stream" => {
             success(String::from("Got a valid video stream! Now getting file."));
-            let get_url = initial_response.url.unwrap();
-            let get_response = client
-                .get(get_url)
-                .header("Accept", "application/json")
-                .header("Content-Type", "application/json")
-                .send()
-                .await
-                .unwrap();
+            let get_response = get_request(
+                GetRequest {
+                    url: initial_response.url.unwrap(),
+                    accept: None,
+                },
+                &client,
+            )
+            .await
+            .unwrap();
+
             let video_contents_result = get_response.bytes().await;
             if video_contents_result.is_err() {
                 let error = video_contents_result.err().unwrap();
@@ -112,13 +118,22 @@ async fn download_video(params: VideoParameters<'_>) -> Result<(), String> {
             let video_contents = video_contents_result.unwrap();
 
             let mut output_file = File::create(params.filename.clone()).unwrap();
-            let write_result = output_file.write_all(&video_contents);
 
+            let write_result = output_file.write_all(&video_contents);
             if !write_result.is_ok() {
                 return Err(format!(
                     "Couldn't write to file {}. Error: {:?}",
                     params.filename,
                     write_result.err().unwrap()
+                ));
+            }
+
+            let flush_result = output_file.flush();
+            if !flush_result.is_ok() {
+                return Err(format!(
+                    "Couldn't flush file {}. Error: {:?}",
+                    params.filename,
+                    flush_result.err().unwrap()
                 ));
             }
 
