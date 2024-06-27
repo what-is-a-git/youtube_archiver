@@ -116,7 +116,6 @@ async fn download_video(params: VideoParameters<'_>) -> Result<(), String> {
                 ));
             }
             let video_contents = video_contents_result.unwrap();
-
             let mut output_file = File::create(params.filename.clone()).unwrap();
 
             let write_result = output_file.write_all(&video_contents);

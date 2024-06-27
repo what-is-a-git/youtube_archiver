@@ -35,7 +35,6 @@ struct Arguments {
 
 fn main() {
     let args = Arguments::parse();
-    create_dir_all(&args.dir).unwrap();
 
     tokio::runtime::Builder::new_current_thread()
         .enable_all()
@@ -108,6 +107,9 @@ async fn get_videos(args: &Arguments, videos: Vec<String>) {
 }
 
 async fn get_video(args: &Arguments) {
+    // create directory for video if it doesn't already exist
+    create_dir_all(&args.dir).unwrap();
+
     if args.metadata {
         request_metadata(
             MetadataParameters {

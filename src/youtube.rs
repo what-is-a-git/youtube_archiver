@@ -3,10 +3,7 @@ use crate::log::*;
 use async_recursion::async_recursion;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
-use std::{
-    fs::{create_dir_all, File},
-    io::Write,
-};
+use std::{fs::File, io::Write};
 
 #[derive(Debug)]
 pub struct MetadataParameters<'a> {
@@ -19,7 +16,6 @@ pub async fn request_metadata(params: MetadataParameters<'_>, api: String) {
     let id = get_id_from_url(params.url);
     let meta_result =
         download_metadata(format!("{api}/noKey/videos?part=snippet&id={id}"), &client).await;
-
     if meta_result.is_err() {
         let error = meta_result.err().unwrap();
         failure(error);
@@ -111,7 +107,6 @@ fn write_metadata(input: &ItemResponse, dir: &String) -> Result<(), String> {
         id: input.id.clone(),
     };
     let output_filename = format!("{dir}/meta.json");
-    create_dir_all(&dir).unwrap();
     let mut output_file = File::create(&output_filename).unwrap();
     let output_contents = serde_json::to_string_pretty(&output_data).unwrap();
 
@@ -332,13 +327,12 @@ pub async fn request_channel(params: ChannelRequest<'_>) -> Result<Vec<String>, 
 
     let id_url = format!(
         "{}/noKey/channels?part=id&forHandle=@{}",
-        params.url, &channel_handle
+        params.api, &channel_handle
     );
-
     let result = get_request(
         GetRequest {
             url: id_url,
-            accept: None,
+            accept: Some(String::from("application/json")),
         },
         &client,
     )
