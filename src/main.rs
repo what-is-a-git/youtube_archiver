@@ -3,6 +3,7 @@ use clap::Parser;
 use std::fs::create_dir_all;
 
 // modules //
+mod http;
 mod log;
 use log::*;
 mod cobalt;
@@ -60,7 +61,12 @@ fn main() {
 }
 
 async fn get_channel(args: &Arguments) {
-    let videos = request_channel(&args.url, args.api.clone(), args.streams_and_premieres).await;
+    let videos = request_channel(ChannelRequest {
+        url: &args.url,
+        api: args.api.clone(),
+        include_streams_and_premieres: args.streams_and_premieres,
+    })
+    .await;
     if videos.is_err() {
         let error = videos.err().unwrap();
         failure(format!(

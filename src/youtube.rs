@@ -1,5 +1,7 @@
+use crate::http::*;
 use crate::log::*;
 use async_recursion::async_recursion;
+use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use std::{
     fs::{create_dir_all, File},
@@ -13,8 +15,10 @@ pub struct MetadataParameters<'a> {
 }
 
 pub async fn request_metadata(params: MetadataParameters<'_>, api: String) {
+    let client = Client::new();
     let id = get_id_from_url(params.url);
-    let meta_result = download_metadata(format!("{api}/noKey/videos?part=snippet&id={id}")).await;
+    let meta_result =
+        download_metadata(format!("{api}/noKey/videos?part=snippet&id={id}"), &client).await;
 
     if meta_result.is_err() {
         let error = meta_result.err().unwrap();
@@ -40,6 +44,7 @@ pub async fn request_metadata(params: MetadataParameters<'_>, api: String) {
         request_thumbnail(ThumbnailParameters {
             url: &thumbnails.default.as_ref().unwrap().url,
             filename: format!("{}/thumb_default.jpg", params.dir),
+            client: &client,
         })
         .await;
     }
@@ -48,6 +53,7 @@ pub async fn request_metadata(params: MetadataParameters<'_>, api: String) {
         request_thumbnail(ThumbnailParameters {
             url: &thumbnails.medium.as_ref().unwrap().url,
             filename: format!("{}/thumb_medium.jpg", params.dir),
+            client: &client,
         })
         .await;
     }
@@ -56,6 +62,7 @@ pub async fn request_metadata(params: MetadataParameters<'_>, api: String) {
         request_thumbnail(ThumbnailParameters {
             url: &thumbnails.high.as_ref().unwrap().url,
             filename: format!("{}/thumb_high.jpg", params.dir),
+            client: &client,
         })
         .await;
     }
@@ -64,6 +71,7 @@ pub async fn request_metadata(params: MetadataParameters<'_>, api: String) {
         request_thumbnail(ThumbnailParameters {
             url: &thumbnails.standard.as_ref().unwrap().url,
             filename: format!("{}/thumb_standard.jpg", params.dir),
+            client: &client,
         })
         .await;
     }
@@ -72,6 +80,7 @@ pub async fn request_metadata(params: MetadataParameters<'_>, api: String) {
         request_thumbnail(ThumbnailParameters {
             url: &thumbnails.maxres.as_ref().unwrap().url,
             filename: format!("{}/thumb_maxres.jpg", params.dir),
+            client: &client,
         })
         .await;
     }
@@ -163,9 +172,8 @@ struct YouTubeResponse {
     items: Vec<ItemResponse>,
 }
 
-async fn download_metadata(url: String) -> Result<YouTubeResponse, String> {
+async fn download_metadata(url: String, client: &Client) -> Result<YouTubeResponse, String> {
     request(format!("Requesting metadata at this url: {}", &url));
-    let client = reqwest::Client::new();
     let result = client
         .get(url)
         .header("Accept", "application/json")
@@ -195,6 +203,7 @@ async fn download_metadata(url: String) -> Result<YouTubeResponse, String> {
 struct ThumbnailParameters<'a> {
     url: &'a String,
     filename: String,
+    client: &'a Client,
 }
 
 async fn request_thumbnail(params: ThumbnailParameters<'_>) {
@@ -211,8 +220,7 @@ async fn request_thumbnail(params: ThumbnailParameters<'_>) {
 }
 
 async fn download_thumbnail(params: ThumbnailParameters<'_>) -> Result<(), String> {
-    let client = reqwest::Client::new();
-    let result = client.get(params.url).send().await;
+    let result = params.client.get(params.url).send().await;
 
     if result.is_err() {
         return Err(format!(
@@ -242,17 +250,30 @@ async fn download_thumbnail(params: ThumbnailParameters<'_>) -> Result<(), Strin
     Ok(())
 }
 
-pub fn get_id_from_url(url: &String) -> String {
+pub fn get_id_from_url(input_url: &String) -> String {
     assert!(
-        url.find("youtu").is_some(),
+        input_url.find("youtu").is_some(),
         "Make sure to provide a valid YouTube URL!"
     );
-    let clean_url = url.split_at(url.find("youtu").unwrap()).1;
+    let mut clean_url = input_url.split_at(input_url.find("youtu").unwrap()).1;
+
+    // removes ?t= stuff from urls like this: https://youtu.be/dQw4w9WgXcQ?t=11
+    let time_marker = clean_url.find("?t");
+    if time_marker.is_some() {
+        clean_url = clean_url.split_at(time_marker.unwrap()).0;
+    }
 
     if clean_url.starts_with("youtube.com/watch?v=") {
         // youtube.com/watch?v=id
         String::from(clean_url.split_at(clean_url.find("=").unwrap() + 1).1)
     } else {
+        // removes ? from urls like this: https://youtu.be/dQw4w9WgXcQ?si=blahblahblah
+        // from the share button for example
+        let question = clean_url.find("?");
+        if question.is_some() {
+            clean_url = clean_url.split_at(question.unwrap()).0;
+        }
+
         // youtu.be/id
         String::from(clean_url.split_at(clean_url.find("/").unwrap() + 1).1)
     }
@@ -270,20 +291,22 @@ struct ChannelResponse {
     id: String,
 }
 
-pub async fn request_channel(
-    url: &String,
-    api: String,
-    include_streams_and_premieres: bool,
-) -> Result<Vec<String>, String> {
-    let channel_handle = get_channel_handle_from_url(url);
+pub struct ChannelRequest<'a> {
+    pub url: &'a String,
+    pub api: String,
+    pub include_streams_and_premieres: bool,
+}
+
+pub async fn request_channel(params: ChannelRequest<'_>) -> Result<Vec<String>, String> {
+    let client = Client::new();
+    let channel_handle = get_channel_handle_from_url(params.url);
     request(format!(
         "Requesting channel ID from handle {}!",
         &channel_handle
     ));
-    let client = reqwest::Client::new();
     let id_url = format!(
-        "{api}/noKey/channels?part=id&forHandle=@{}",
-        &channel_handle
+        "{}/noKey/channels?part=id&forHandle=@{}",
+        params.url, &channel_handle
     );
     let result = client.get(id_url).send().await;
     if result.is_err() {
@@ -310,10 +333,11 @@ pub async fn request_channel(
     ));
     let videos_request: Result<Vec<String>, String> = request_videos(VideosRequestParameters {
         channel_id: channel_id,
-        api: api.clone(),
+        api: params.api.clone(),
         next_page: None,
         previous_videos: None,
-        include_streams_and_premieres: include_streams_and_premieres,
+        include_streams_and_premieres: params.include_streams_and_premieres,
+        client: client,
     })
     .await;
 
@@ -362,6 +386,7 @@ struct VideosRequestParameters {
     next_page: Option<String>,
     previous_videos: Option<Vec<String>>,
     include_streams_and_premieres: bool,
+    client: Client,
 }
 
 #[async_recursion]
@@ -377,7 +402,6 @@ async fn request_videos(params: VideosRequestParameters) -> Result<Vec<String>, 
         "Requesting an initial search for all videos from {}!",
         params.channel_id
     ));
-    let client = reqwest::Client::new();
     let mut initial_url = format!(
         "{}/noKey/search?part=snippet,id&order=date&type=video&maxResults=50&channelId={}",
         params.api, params.channel_id
@@ -387,7 +411,7 @@ async fn request_videos(params: VideosRequestParameters) -> Result<Vec<String>, 
         initial_url += format!("&pageToken={}", params.next_page.unwrap()).as_str();
     }
 
-    let result = client.get(initial_url).send().await;
+    let result = params.client.get(initial_url).send().await;
     if result.is_err() {
         let error = result.err().unwrap();
         return Err(format!("There was an error requesting the channel videos from the channel id {}! Error: {error}", params.channel_id));
@@ -439,6 +463,7 @@ async fn request_videos(params: VideosRequestParameters) -> Result<Vec<String>, 
             next_page: Some(search_list.nextPageToken.unwrap().clone()),
             previous_videos: Some(videos),
             include_streams_and_premieres: params.include_streams_and_premieres,
+            client: params.client,
         })
         .await;
     }
