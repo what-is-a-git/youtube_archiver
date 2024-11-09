@@ -1,3 +1,10 @@
+# notice
+
+cobalt is changing it's api and stuff and i don't have a reason to work on this codebase so just know
+if you try and use this past `11 November, 2024` it just won't work
+
+sorry */shrug*
+
 # youtube_archiver
 
 rust project that downloads all the information
